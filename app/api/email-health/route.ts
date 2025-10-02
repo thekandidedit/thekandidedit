@@ -14,17 +14,16 @@ export async function GET() {
       text: "If you see this, RESEND_API_KEY + domain are working in production.",
     });
 
-    // Handle both possible SDK response shapes
+    // Safely extract ID from both possible response shapes
     const id =
-      (resp as any)?.id ??
-      (resp as any)?.data?.id ??
+      (resp as { id?: string })?.id ??
+      (resp as { data?: { id?: string } })?.data?.id ??
       null;
 
-    // Helpful one-line log in Vercel "Runtime Logs"
     console.log("[email-health] send response:", JSON.stringify(resp));
 
     return NextResponse.json({ ok: true, id });
-  } catch (e: unknown) {
+  } catch (e) {
     console.error("[email-health] error:", e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
