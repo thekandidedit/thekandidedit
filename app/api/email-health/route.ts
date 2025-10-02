@@ -3,27 +3,29 @@ import { resend } from "@/lib/resend";
 
 export async function GET() {
   try {
-    const from = process.env.EMAIL_FROM || "The Kandid Edit <no-reply@thekandidedit.com>";
+    const from =
+      process.env.EMAIL_FROM || "The Kandid Edit <no-reply@thekandidedit.com>";
     const to = process.env.TEST_EMAIL ?? "thekandidedit@gmail.com";
 
-    const result = await resend.emails.send({
+    const resp = await resend.emails.send({
       from,
       to,
       subject: "Health: Resend from production",
-      text: "If you see this, RESEND_API_KEY and domain are working in production.",
+      text: "If you see this, RESEND_API_KEY + domain are working in production.",
     });
 
-    // Instead of `any`, cast result to `Record<string, unknown>`
-    const safeResult = result as Record<string, unknown>;
+    // Handle both possible SDK response shapes
+    const id =
+      (resp as any)?.id ??
+      (resp as any)?.data?.id ??
+      null;
 
-    return NextResponse.json({
-      ok: true,
-      resultId: safeResult.id ?? null,
-    });
+    // Helpful one-line log in Vercel "Runtime Logs"
+    console.log("[email-health] send response:", JSON.stringify(resp));
+
+    return NextResponse.json({ ok: true, id });
   } catch (e: unknown) {
-    return NextResponse.json(
-      { ok: false, error: String(e) },
-      { status: 500 }
-    );
+    console.error("[email-health] error:", e);
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
