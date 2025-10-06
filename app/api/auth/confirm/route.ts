@@ -1,13 +1,6 @@
 import { NextResponse } from "next/server";
 import { verifyEmailToken } from "@/lib/tokens";
-import { createClient } from "@supabase/supabase-js";
-import { headers } from "next/headers";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE!;
-
-// Minimal supabase admin (optional DB update)
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function GET(req: Request) {
   try {
@@ -20,18 +13,22 @@ export async function GET(req: Request) {
     const payload = verifyEmailToken(token) as { email?: string };
     const email = (payload?.email || "").toLowerCase();
 
-    // Optional: mark subscriber active; ignore errors if table/row not present
-    try {
-      await supabaseAdmin
-        .from("subscribers")
-        .update({ active: true })
-        .eq("email", email);
-    } catch { /* ignore DB errors here */ }
+    // Ensure a row exists (idempotent)
+    await supabaseAdmin
+      .from("subscribers")
+      .upsert({ email }, { onConflict: "email", ignoreDuplicates: true });
+
+    // Mark as confirmed
+    await supabaseAdmin
+      .from("subscribers")
+      .update({ status: "confirmed" })
+      .eq("email", email);
 
     return NextResponse.redirect(
       `${process.env.APP_URL}/auth/confirm?status=ok&email=${encodeURIComponent(email)}`
     );
   } catch (err) {
+    console.error("confirm route error:", err);
     return NextResponse.redirect(`${process.env.APP_URL}/auth/confirm?status=error`);
   }
 }
