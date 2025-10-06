@@ -1,9 +1,12 @@
 // app/auth/confirm/page.tsx
-type Props = { searchParams: { status?: string; email?: string } };
 
-export default function ConfirmPage({ searchParams }: Props) {
-  const status = searchParams.status ?? "ok";
-  const email = searchParams.email;
+export default function ConfirmPage({
+  searchParams,
+}: {
+  searchParams: { status?: string; email?: string };
+}) {
+  const status = searchParams?.status ?? "ok";
+  const email = searchParams?.email;
 
   const title =
     status === "ok"
@@ -23,14 +26,14 @@ export default function ConfirmPage({ searchParams }: Props) {
         alignItems: "center",
         justifyContent: "center",
         minHeight: "70vh",
-        gap: 12,
+        gap: "12px",
         fontFamily: "system-ui, sans-serif",
-        padding: 24,
+        padding: "24px",
         textAlign: "center",
       }}
     >
-      <h1>{title}</h1>
-      <p>{desc}</p>
+      <h1 style={{ fontSize: "1.75rem", fontWeight: "600" }}>{title}</h1>
+      <p style={{ fontSize: "1rem", color: "#555" }}>{desc}</p>
     </main>
   );
 }
