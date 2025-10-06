@@ -1,12 +1,13 @@
 // app/auth/confirm/page.tsx
 
-export default function ConfirmPage({
-  searchParams,
-}: {
-  searchParams: { status?: string; email?: string };
-}) {
-  const status = searchParams?.status ?? "ok";
-  const email = searchParams?.email;
+interface ConfirmPageProps {
+  searchParams?: Promise<{ status?: string; email?: string }>;
+}
+
+export default async function ConfirmPage({ searchParams }: ConfirmPageProps) {
+  const params = (await searchParams) || {};
+  const status = params.status ?? "ok";
+  const email = params.email;
 
   const title =
     status === "ok"
