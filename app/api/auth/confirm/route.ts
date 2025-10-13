@@ -1,9 +1,10 @@
+// app/api/auth/confirm/route.ts
 import { NextResponse } from "next/server";
 import { verifyEmailToken } from "@/lib/tokens";
 
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
+    const searchParams = new URL(req.url).searchParams;
     const token = searchParams.get("token");
 
     if (!token) {
@@ -19,8 +20,7 @@ export async function GET(req: Request) {
       );
     }
 
-    // ✅ Here, you could mark the email as confirmed in your DB (if you had one)
-    console.log("✅ Email confirmed for:", payload.email);
+    // mark confirmed in DB here if/when you add persistence
 
     return NextResponse.redirect(
       new URL(
@@ -33,4 +33,5 @@ export async function GET(req: Request) {
     return NextResponse.redirect(
       new URL("/auth/confirm?status=error", process.env.APP_URL)
     );
-  }}
+  }
+}
