@@ -1,47 +1,66 @@
-// app/page.tsx
-"use client";
+'use client';
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from 'react';
+
+type SubscribeResponse =
+  | { ok: true; confirmUrl?: string; confirm_url?: string }
+  | { ok: false; error?: string };
 
 export default function Home() {
-  const [email, setEmail] = useState("");
-  const [msg, setMsg] = useState<string | null>(null);
-  const [confirmUrl, setConfirmUrl] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [confirmUrl, setConfirmUrl] = useState<string | null>(null);
 
-  const subscribe = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setMsg(null);
-    setConfirmUrl(null);
-    setLoading(true);
+  const canSubmit = useMemo(() => {
+    return /\S+@\S+\.\S+/.test(email) && !loading;
+  }, [email, loading]);
 
-    try {
-      const r = await fetch("/api/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const data = await r.json();
+  const onSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!canSubmit) return;
 
-      if (!r.ok || data.ok === false) {
-        setMsg(data?.error ?? "Something went wrong.");
-      } else {
-        setMsg("Success! We sent a confirmation email.");
-        setConfirmUrl(data.confirmUrl ?? null); // handy for testing
-        setEmail("");
+      setLoading(true);
+      setMessage(null);
+      setConfirmUrl(null);
+
+      try {
+        const res = await fetch('/api/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim().toLowerCase() }),
+        });
+
+        const data = (await res.json()) as SubscribeResponse;
+
+        if (!res.ok || data.ok === false) {
+          setMessage(data?.error ?? `Error ${res.status}`);
+          return;
+        }
+
+        const url = data.confirmUrl ?? data.confirm_url ?? null;
+
+        setMessage('Success! We sent a confirmation email.');
+        setConfirmUrl(url);
+        setEmail('');
+      } catch {
+        setMessage('Network error. Please try again.');
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      setMsg("Network error. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [canSubmit, email]
+  );
 
   return (
-    <main className="p-8 text-white" style={{ background: "#0b0b0b", minHeight: "100vh" }}>
+    <main
+      className="p-8 text-white"
+      style={{ background: '#0b0b0b', minHeight: '100vh' }}
+    >
       <h1 className="text-3xl font-bold mb-6">The Kandid Edit</h1>
 
-      <form onSubmit={subscribe} className="flex gap-2 mb-4">
+      <form onSubmit={onSubmit} className="flex gap-2 mb-4">
         <input
           className="border px-3 py-2 rounded w-[320px] text-black"
           placeholder="you@example.com"
@@ -52,25 +71,31 @@ export default function Home() {
         />
         <button
           className="px-4 py-2 rounded bg-white text-black disabled:opacity-60"
-          disabled={loading}
+          disabled={!canSubmit}
           type="submit"
         >
-          {loading ? "Sending..." : "Subscribe"}
+          {loading ? 'Sending…' : 'Subscribe'}
         </button>
       </form>
 
-      {msg && <p className="mb-2">{msg}</p>}
+      {message && <p className="mb-2">{message}</p>}
+
       {confirmUrl && (
-        <p className="text-sm opacity-70">
-          (For testing) Confirm link:{" "}
-          <a className="underline" href={confirmUrl}>
+        <p className="text-sm opacity-70 break-all">
+          (For testing) Confirm link:{' '}
+          <a
+            className="underline"
+            href={confirmUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             {confirmUrl}
           </a>
         </p>
       )}
 
       <p className="mt-10 text-sm opacity-70">
-        Already subscribed and want to leave?{" "}
+        Already subscribed and want to leave?{' '}
         <a className="underline" href="/unsubscribe">
           Unsubscribe here
         </a>

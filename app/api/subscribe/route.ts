@@ -1,16 +1,32 @@
 // app/api/subscribe/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "node:crypto";
+import crypto from "node:crypto"; // kept for possible token storage/backfill
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { resend } from "@/lib/resend";
+import { signEmailToken } from "@/lib/tokens";
 
-// 1) Validate body
+// --- helpers ---------------------------------------------------------------
+function cleanBaseUrl(req: NextRequest): string {
+  const fromEnv =
+    (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").trim();
+  const base = fromEnv || new URL(req.url).origin; // fallback to request origin
+  return base.replace(/\/+$/, ""); // no trailing slash
+}
+function fromAddress(): string {
+  return (
+    (process.env.EMAIL_FROM || process.env.RESEND_FROM || "").trim() ||
+    `"The Kandid Edit" <onboarding@resend.dev>`
+  );
+}
+
+// --- schema ----------------------------------------------------------------
 const Body = z.object({ email: z.string().email() });
 
+// --- route -----------------------------------------------------------------
 export async function POST(req: NextRequest) {
   try {
-    // ---- 1) Validate input
+    // 1) validate
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json(
@@ -20,27 +36,26 @@ export async function POST(req: NextRequest) {
     }
     const email = parsed.data.email.toLowerCase().trim();
 
-    // ---- 2) Make token and try to insert a new row as pending
-    const token = crypto.randomBytes(24).toString("hex");
-
+    // 2) DB: insert pending or re-arm non-active duplicate
+    const dbToken = crypto.randomBytes(24).toString("hex"); // optional backfill token
     const { error: insertError } = await supabaseAdmin
       .from("subscribers")
-      .insert({ email, status: "pending", confirm_token: token })
+      .insert({ email, status: "pending", confirm_token: dbToken })
       .select()
       .single();
 
-    // ---- 2b) If duplicate, update (re-arm) any non-active row
     if (insertError) {
+      // unique_violation
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((insertError as any).code === "23505") {
         const { data: upd, error: updateError } = await supabaseAdmin
           .from("subscribers")
-          .update({ confirm_token: token, status: "pending" })
+          .update({ confirm_token: dbToken, status: "pending" })
           .eq("email", email)
-          .neq("status", "active") // allow resubscribe if unsubscribed or pending
+          .neq("status", "active")
           .select();
 
-        // Already active? then don't send a confirm link (no token to confirm).
+        // If row is already active (no update), stop here.
         if (updateError || !upd?.length) {
           return NextResponse.json({
             ok: true,
@@ -56,15 +71,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ---- 3) Build confirm URL
-    const base = process.env.NEXT_PUBLIC_SITE_URL!;
-    const confirmUrl = `${base}/api/confirm?token=${token}`;
+    // 3) JWT confirm link for your /api/auth/confirm route
+    const jwt = signEmailToken({ email }); // matches app/api/auth/confirm/route.ts
+    const confirmUrl = `${cleanBaseUrl(req)}/api/auth/confirm?token=${jwt}`;
 
-    // ---- 4) Send email (don’t block API if it fails)
+    // 4) send mail (non-blocking on failure)
     try {
-      const from =
-        process.env.EMAIL_FROM || `"The Kandid Edit" <onboarding@resend.dev>`;
-
+      const from = fromAddress();
       await resend.emails.send({
         from,
         to: email,
@@ -84,7 +97,7 @@ export async function POST(req: NextRequest) {
                   Confirm Subscription
                 </a>
               </p>
-              <p style="margin:0 0 16px;font-size:12px;color:#666;">
+              <p style="margin:0 0 16px;font-size:12px;color:#666;word-break:break-all;">
                 Or open this link: <br/>
                 <a href="${confirmUrl}" style="color:#111;">${confirmUrl}</a>
               </p>
@@ -93,12 +106,15 @@ export async function POST(req: NextRequest) {
         `,
       });
     } catch {
-      // swallow email errors; API still responds OK
+      // swallow email errors; still return ok so UI can show the test link
     }
 
-    // ---- 5) Done
-    return NextResponse.json({ ok: true, sent: true, confirmUrl }, { status: 200 });
-  } catch (err: unknown) {
+    // 5) respond; include confirmUrl for on-page “(For testing)” link
+    return NextResponse.json(
+      { ok: true, sent: true, confirmUrl },
+      { status: 200 }
+    );
+  } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
