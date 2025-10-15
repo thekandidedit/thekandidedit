@@ -36,7 +36,11 @@ export default function Home() {
         const data = (await res.json()) as SubscribeResponse;
 
         if (!res.ok || data.ok === false) {
-          setMessage(data.error ?? `Error ${res.status}`);
+          
+           const errMsg = typeof data === 'object' && data && 'error' in data
+            ? String((data as any).error)
+            : `Error ${res.status}`;
+          setMessage(errMsg);
           return;
         }
 
