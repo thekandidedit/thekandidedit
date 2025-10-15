@@ -2,15 +2,20 @@
 
 import { useCallback, useMemo, useState } from 'react';
 
+type SubscribeResponse = {
+  ok?: boolean;
+  error?: string;
+  confirmUrl?: string | null;
+  confirm_url?: string | null; // temporary fallback
+};
+
 export default function Home() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [confirmUrl, setConfirmUrl] = useState<string | null>(null);
 
-  const canSubmit = useMemo(() => {
-    return /\S+@\S+\.\S+/.test(email) && !loading;
-  }, [email, loading]);
+  const canSubmit = useMemo(() => /\S+@\S+\.\S+/.test(email) && !loading, [email, loading]);
 
   const onSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -28,11 +33,10 @@ export default function Home() {
           body: JSON.stringify({ email: email.trim().toLowerCase() }),
         });
 
-        // loosened typing to bypass build error
-        const data = await res.json() as Record<string, unknown>;
+        const data = (await res.json()) as SubscribeResponse;
 
         if (!res.ok || data.ok === false) {
-          setMessage(data?.error ?? `Error ${res.status}`);
+          setMessage(data.error ?? `Error ${res.status}`);
           return;
         }
 
@@ -51,10 +55,7 @@ export default function Home() {
   );
 
   return (
-    <main
-      className="p-8 text-white"
-      style={{ background: '#0b0b0b', minHeight: '100vh' }}
-    >
+    <main className="p-8 text-white" style={{ background: '#0b0b0b', minHeight: '100vh' }}>
       <h1 className="text-3xl font-bold mb-6">The Kandid Edit</h1>
 
       <form onSubmit={onSubmit} className="flex gap-2 mb-4">
@@ -66,11 +67,7 @@ export default function Home() {
           type="email"
           required
         />
-        <button
-          className="px-4 py-2 rounded bg-white text-black disabled:opacity-60"
-          disabled={!canSubmit}
-          type="submit"
-        >
+        <button className="px-4 py-2 rounded bg-white text-black disabled:opacity-60" disabled={!canSubmit} type="submit">
           {loading ? 'Sending…' : 'Subscribe'}
         </button>
       </form>
@@ -80,12 +77,7 @@ export default function Home() {
       {confirmUrl && (
         <p className="text-sm opacity-70 break-all">
           (For testing) Confirm link:{' '}
-          <a
-            className="underline"
-            href={confirmUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a className="underline" href={confirmUrl} target="_blank" rel="noopener noreferrer">
             {confirmUrl}
           </a>
         </p>
