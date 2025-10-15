@@ -29,7 +29,7 @@ export default function Home() {
         });
 
         // loosened typing to bypass build error
-        const data: any = await res.json();
+        const data = await res.json() as Record<string, unknown>;
 
         if (!res.ok || data.ok === false) {
           setMessage(data?.error ?? `Error ${res.status}`);
