@@ -1,5 +1,4 @@
 'use client';
-// force redeploy
 
 import { useCallback, useMemo, useState } from 'react';
 
@@ -37,11 +36,8 @@ export default function Home() {
         const data = (await res.json()) as SubscribeResponse;
 
         if (!res.ok || data.ok === false) {
-          const errMsg =
-            typeof data === 'object' && data !== null && 'error' in data
-              ? String((data as any).error)
-              : `Error ${res.status}`;
-          setMessage(errMsg);
+          const err = typeof data.error === 'string' ? data.error : `Error ${res.status}`;
+          setMessage(err);
           return;
         }
 
@@ -90,10 +86,7 @@ export default function Home() {
 
       <p className="mt-10 text-sm opacity-70">
         Already subscribed and want to leave?{' '}
-        <a className="underline" href="/unsubscribe">
-          Unsubscribe here
-        </a>
-        .
+        <a className="underline" href="/unsubscribe">Unsubscribe here</a>.
       </p>
     </main>
   );
