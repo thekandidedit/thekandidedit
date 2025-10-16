@@ -7,8 +7,7 @@ import { resend } from "@/lib/resend";
 import { signEmailToken } from "@/lib/tokens";
 
 function cleanBaseUrl(req: NextRequest): string {
-  const fromEnv =
-    (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").trim();
+  const fromEnv = (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").trim();
   const base = fromEnv || new URL(req.url).origin;
   return base.replace(/\/+$/, "");
 }
@@ -21,6 +20,9 @@ function fromAddress(): string {
 }
 
 const Body = z.object({ email: z.string().email() });
+
+type PgError = { code?: string; message: string };
+type ResendSendResponse = { data?: { id?: string } | null; error?: { message?: string } | null };
 
 export async function POST(req: NextRequest) {
   try {
@@ -43,7 +45,8 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (insertError) {
-      if ((insertError as any).code === "23505") {
+      const code = (insertError as PgError).code;
+      if (typeof code === "string" && code === "23505") {
         const { data: upd, error: updateError } = await supabaseAdmin
           .from("subscribers")
           .update({ confirm_token: dbToken, status: "pending" })
@@ -60,7 +63,7 @@ export async function POST(req: NextRequest) {
         }
       } else {
         return NextResponse.json(
-          { ok: false, where: "db", error: insertError.message },
+          { ok: false, where: "db", error: (insertError as PgError).message },
           { status: 500 }
         );
       }
@@ -72,7 +75,7 @@ export async function POST(req: NextRequest) {
 
     // 4) Send email — now with validation and visible errors
     const from = fromAddress();
-    const sendResp = await resend.emails.send({
+    const sendResp: ResendSendResponse = await resend.emails.send({
       from,
       to: email,
       subject: "Please confirm your subscription",
@@ -99,13 +102,13 @@ export async function POST(req: NextRequest) {
     });
 
     // 5) Check if Resend actually succeeded
-    const sentId = (sendResp as any)?.data?.id;
+    const sentId = sendResp?.data?.id;
     if (!sentId) {
       return NextResponse.json(
         {
           ok: false,
           where: "email",
-          error: (sendResp as any)?.error?.message || "SEND_FAILED",
+          error: sendResp?.error?.message || "SEND_FAILED",
         },
         { status: 502 }
       );
