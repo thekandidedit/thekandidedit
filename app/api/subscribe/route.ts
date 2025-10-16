@@ -72,20 +72,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3) Build confirmation link
+    // 3) Build confirmation + unsubscribe links
+    const base = cleanBaseUrl(req);
     const jwt = signEmailToken({ email });
-    const confirmUrl = `${cleanBaseUrl(req)}/api/auth/confirm?token=${jwt}`;
+    const confirmUrl = `${base}/api/auth/confirm?token=${jwt}`;
+    const unsubUrl = `${base}/api/unsubscribe?token=${jwt}`;
 
     // 4) Send email (non-blocking if it fails)
     try {
       const from = fromAddress();
-      await resend.emails.send({
+      const resp = await resend.emails.send({
         from,
         to: email,
         subject: "Please confirm your subscription",
         text:
           `Hi,\n\nPlease confirm your subscription to The Kandid Edit by opening this link:\n` +
-          `${confirmUrl}\n\nIf you didn’t request this, you can ignore this email.`,
+          `${confirmUrl}\n\nIf you didn’t request this, you can ignore this email.\n\n` +
+          `Don’t want these? Unsubscribe: ${unsubUrl}`,
         html: `
           <table style="max-width:560px;margin:0 auto;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#111;">
             <tr><td style="padding:24px 0;">
@@ -102,12 +105,32 @@ export async function POST(req: NextRequest) {
                 Or open this link: <br/>
                 <a href="${confirmUrl}" style="color:#111;">${confirmUrl}</a>
               </p>
+              <hr style="margin:24px 0;border:none;border-top:1px solid #eee;" />
+              <p style="margin:0;font-size:12px;color:#666;">
+                Don’t want these? <a href="${unsubUrl}" style="color:#111;">Unsubscribe</a>.
+              </p>
             </td></tr>
           </table>
         `,
       });
+
+      // optional: surface send failures
+      const sentId = (resp as any)?.data?.id;
+      if (!sentId) {
+        // still return ok so UI shows the test link
+        // but include where/email error for debugging
+        return NextResponse.json(
+          {
+            ok: true,
+            sent: false,
+            confirmUrl,
+            note: "Email send failed (see logs).",
+          },
+          { status: 200 }
+        );
+      }
     } catch {
-      // Swallow send errors — UI will still show test link
+      // swallow send errors — UI will still show test link
     }
 
     // 5) Return success with test link
