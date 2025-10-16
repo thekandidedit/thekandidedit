@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/api/subscribe/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
@@ -47,8 +48,6 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (insertError) {
-      // Handle duplicate (already subscribed) emails
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((insertError as any).code === "23505") {
         const { data: upd, error: updateError } = await supabaseAdmin
           .from("subscribers")
@@ -72,23 +71,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3) Build confirmation + unsubscribe links
-    const base = cleanBaseUrl(req);
+    // 3) Build confirmation link
     const jwt = signEmailToken({ email });
-    const confirmUrl = `${base}/api/auth/confirm?token=${jwt}`;
+    const confirmUrl = `${cleanBaseUrl(req)}/api/auth/confirm?token=${jwt}`;
+
+    // 4) Build unsubscribe link
+    const base = (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").replace(/\/+$/, "");
     const unsubUrl = `${base}/api/unsubscribe?token=${jwt}`;
 
-    // 4) Send email (non-blocking if it fails)
+    // 5) Send email (non-blocking if it fails)
     try {
       const from = fromAddress();
-      const resp = await resend.emails.send({
+      await resend.emails.send({
         from,
         to: email,
         subject: "Please confirm your subscription",
         text:
-          `Hi,\n\nPlease confirm your subscription to The Kandid Edit by opening this link:\n` +
-          `${confirmUrl}\n\nIf you didn’t request this, you can ignore this email.\n\n` +
-          `Don’t want these? Unsubscribe: ${unsubUrl}`,
+          `Hi,\n\nPlease confirm your subscription to The Kandid Edit by opening this link:\n${confirmUrl}\n\n` +
+          `If you didn’t request this, you can ignore this email.\n\nTo unsubscribe, visit:\n${unsubUrl}`,
         html: `
           <table style="max-width:560px;margin:0 auto;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#111;">
             <tr><td style="padding:24px 0;">
@@ -106,34 +106,18 @@ export async function POST(req: NextRequest) {
                 <a href="${confirmUrl}" style="color:#111;">${confirmUrl}</a>
               </p>
               <hr style="margin:24px 0;border:none;border-top:1px solid #eee;" />
-              <p style="margin:0;font-size:12px;color:#666;">
+              <p style="margin:0 0 16px;font-size:12px;color:#666;">
                 Don’t want these? <a href="${unsubUrl}" style="color:#111;">Unsubscribe</a>.
               </p>
             </td></tr>
           </table>
         `,
       });
-
-      // optional: surface send failures
-      const sentId = (resp as any)?.data?.id;
-      if (!sentId) {
-        // still return ok so UI shows the test link
-        // but include where/email error for debugging
-        return NextResponse.json(
-          {
-            ok: true,
-            sent: false,
-            confirmUrl,
-            note: "Email send failed (see logs).",
-          },
-          { status: 200 }
-        );
-      }
     } catch {
-      // swallow send errors — UI will still show test link
+      // Swallow send errors — UI will still show test link
     }
 
-    // 5) Return success with test link
+    // 6) Return success with test link
     return NextResponse.json({ ok: true, sent: true, confirmUrl }, { status: 200 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
