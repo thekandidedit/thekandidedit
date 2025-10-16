@@ -1,18 +1,18 @@
 // app/api/subscribe/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "node:crypto"; // kept for possible token storage/backfill
+import crypto from "node:crypto";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { resend } from "@/lib/resend";
 import { signEmailToken } from "@/lib/tokens";
 
-// --- helpers ---------------------------------------------------------------
 function cleanBaseUrl(req: NextRequest): string {
   const fromEnv =
     (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").trim();
-  const base = fromEnv || new URL(req.url).origin; // fallback to request origin
-  return base.replace(/\/+$/, ""); // no trailing slash
+  const base = fromEnv || new URL(req.url).origin;
+  return base.replace(/\/+$/, "");
 }
+
 function fromAddress(): string {
   return (
     (process.env.EMAIL_FROM || process.env.RESEND_FROM || "").trim() ||
@@ -20,13 +20,11 @@ function fromAddress(): string {
   );
 }
 
-// --- schema ----------------------------------------------------------------
 const Body = z.object({ email: z.string().email() });
 
-// --- route -----------------------------------------------------------------
 export async function POST(req: NextRequest) {
   try {
-    // 1) validate
+    // 1) Validate email
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json(
@@ -36,8 +34,8 @@ export async function POST(req: NextRequest) {
     }
     const email = parsed.data.email.toLowerCase().trim();
 
-    // 2) DB: insert pending or re-arm non-active duplicate
-    const dbToken = crypto.randomBytes(24).toString("hex"); // optional backfill token
+    // 2) Insert or update subscriber
+    const dbToken = crypto.randomBytes(24).toString("hex");
     const { error: insertError } = await supabaseAdmin
       .from("subscribers")
       .insert({ email, status: "pending", confirm_token: dbToken })
@@ -45,8 +43,6 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (insertError) {
-      // unique_violation
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((insertError as any).code === "23505") {
         const { data: upd, error: updateError } = await supabaseAdmin
           .from("subscribers")
@@ -55,7 +51,6 @@ export async function POST(req: NextRequest) {
           .neq("status", "active")
           .select();
 
-        // If row is already active (no update), stop here.
         if (updateError || !upd?.length) {
           return NextResponse.json({
             ok: true,
@@ -71,49 +66,53 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3) JWT confirm link for your /api/auth/confirm route
-    const jwt = signEmailToken({ email }); // matches app/api/auth/confirm/route.ts
+    // 3) Build confirmation link
+    const jwt = signEmailToken({ email });
     const confirmUrl = `${cleanBaseUrl(req)}/api/auth/confirm?token=${jwt}`;
 
-    // 4) send mail (non-blocking on failure)
-    try {
-      const from = fromAddress();
-      await resend.emails.send({
-        from,
-        to: email,
-        subject: "Please confirm your subscription",
-        text:
-          `Hi,\n\nPlease confirm your subscription to The Kandid Edit by opening this link:\n` +
-          `${confirmUrl}\n\nIf you didn’t request this, you can ignore this email.`,
-        html: `
-          <table style="max-width:560px;margin:0 auto;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#111;">
-            <tr><td style="padding:24px 0;">
-              <h1 style="margin:0 0 8px;font-size:20px;">Confirm your subscription</h1>
-              <p style="margin:0 0 16px;line-height:1.6;">
-                Thanks for subscribing to <strong>The Kandid Edit</strong> 🎉
-              </p>
-              <p style="margin:0 0 20px;">
-                <a href="${confirmUrl}" style="display:inline-block;background:#111;color:#fff;padding:12px 18px;border-radius:6px;text-decoration:none;">
-                  Confirm Subscription
-                </a>
-              </p>
-              <p style="margin:0 0 16px;font-size:12px;color:#666;word-break:break-all;">
-                Or open this link: <br/>
-                <a href="${confirmUrl}" style="color:#111;">${confirmUrl}</a>
-              </p>
-            </td></tr>
-          </table>
-        `,
-      });
-    } catch {
-      // swallow email errors; still return ok so UI can show the test link
+    // 4) Send email — now with validation and visible errors
+    const from = fromAddress();
+    const sendResp = await resend.emails.send({
+      from,
+      to: email,
+      subject: "Please confirm your subscription",
+      text: `Hi,\n\nPlease confirm your subscription to The Kandid Edit by opening this link:\n${confirmUrl}\n\nIf you didn’t request this, you can ignore this email.`,
+      html: `
+        <table style="max-width:560px;margin:0 auto;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#111;">
+          <tr><td style="padding:24px 0;">
+            <h1 style="margin:0 0 8px;font-size:20px;">Confirm your subscription</h1>
+            <p style="margin:0 0 16px;line-height:1.6;">
+              Thanks for subscribing to <strong>The Kandid Edit</strong> 🎉
+            </p>
+            <p style="margin:0 0 20px;">
+              <a href="${confirmUrl}" style="display:inline-block;background:#111;color:#fff;padding:12px 18px;border-radius:6px;text-decoration:none;">
+                Confirm Subscription
+              </a>
+            </p>
+            <p style="margin:0 0 16px;font-size:12px;color:#666;word-break:break-all;">
+              Or open this link: <br/>
+              <a href="${confirmUrl}" style="color:#111;">${confirmUrl}</a>
+            </p>
+          </td></tr>
+        </table>
+      `,
+    });
+
+    // 5) Check if Resend actually succeeded
+    const sentId = (sendResp as any)?.data?.id;
+    if (!sentId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          where: "email",
+          error: (sendResp as any)?.error?.message || "SEND_FAILED",
+        },
+        { status: 502 }
+      );
     }
 
-    // 5) respond; include confirmUrl for on-page “(For testing)” link
-    return NextResponse.json(
-      { ok: true, sent: true, confirmUrl },
-      { status: 200 }
-    );
+    // 6) Respond OK
+    return NextResponse.json({ ok: true, sent: true, confirmUrl }, { status: 200 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
