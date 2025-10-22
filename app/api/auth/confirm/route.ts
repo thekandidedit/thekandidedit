@@ -1,64 +1,39 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/api/auth/confirm/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { verifyEmailToken } from "@/lib/tokens";
 
-function baseUrl(req: NextRequest) {
-  const fromEnv = (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").trim();
-  const base = fromEnv || new URL(req.url).origin;
-  return base.replace(/\/+$/, "");
-}
-
 export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const token = url.searchParams.get("token");
+  const { searchParams } = new URL(req.url);
+  const token = searchParams.get("token");
 
   if (!token) {
-    return NextResponse.redirect(
-      `${baseUrl(req)}/auth/confirm?status=error&reason=missing_token`
-    );
+    return NextResponse.json({ ok: false, error: "Missing token" }, { status: 400 });
   }
 
   try {
-    // 1) Verify JWT and extract email
-    const payload = await verifyEmailToken(token);
-    const email = String(payload.email || "").trim().toLowerCase();
+    const payload = verifyEmailToken(token);
+    const email = payload?.email as string | undefined;
+
     if (!email) {
-      return NextResponse.redirect(
-        `${baseUrl(req)}/auth/confirm?status=error&reason=bad_payload`
-      );
+      return NextResponse.json({ ok: false, error: "Invalid token" }, { status: 400 });
     }
 
-    // 2) Activate subscriber + token hygiene
-    //    - set status=active
-    //    - clear confirm_token
-    //    - clear unsubscribed_at (in case they’re re-subscribing)
     const { error } = await supabaseAdmin
       .from("subscribers")
-      .upsert(
-        {
-          email,
-          status: "active",
-          confirm_token: null,
-          unsubscribed_at: null,
-        },
-        { onConflict: "email" }
-      );
+      .update({ status: "active", confirm_token: null })
+      .eq("email", email);
 
     if (error) {
-      return NextResponse.redirect(
-        `${baseUrl(req)}/auth/confirm?status=error&reason=db`
-      );
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
 
-    // 3) Done
-    return NextResponse.redirect(
-      `${baseUrl(req)}/auth/confirm?status=ok&email=${encodeURIComponent(email)}`
-    );
-  } catch {
-    return NextResponse.redirect(
-      `${baseUrl(req)}/auth/confirm?status=error&reason=invalid_token`
-    );
+    const base = process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "";
+    const redirectUrl = `${base.replace(/\/+$/, "")}/auth/confirm?status=ok&email=${encodeURIComponent(email)}`;
+
+    return NextResponse.redirect(redirectUrl);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
 }
