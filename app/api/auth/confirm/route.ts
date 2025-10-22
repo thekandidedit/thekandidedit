@@ -1,56 +1,64 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/api/auth/confirm/route.ts
-import { NextResponse } from "next/server";
-import { verifyEmailToken } from "@/lib/tokens";
+import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { verifyEmailToken } from "@/lib/tokens";
 
-export async function GET(req: Request) {
+function baseUrl(req: NextRequest) {
+  const fromEnv = (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").trim();
+  const base = fromEnv || new URL(req.url).origin;
+  return base.replace(/\/+$/, "");
+}
+
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url);
+  const token = url.searchParams.get("token");
+
+  if (!token) {
+    return NextResponse.redirect(
+      `${baseUrl(req)}/auth/confirm?status=error&reason=missing_token`
+    );
+  }
+
   try {
-    const searchParams = new URL(req.url).searchParams;
-    const token = searchParams.get("token");
-
-    if (!token) {
-      return NextResponse.redirect(
-        new URL("/auth/confirm?status=error", process.env.APP_URL)
-      );
-    }
-
-    const payload = verifyEmailToken(token);
-    const email = payload?.email?.toLowerCase().trim();
-
+    // 1) Verify JWT and extract email
+    const payload = await verifyEmailToken(token);
+    const email = String(payload.email || "").trim().toLowerCase();
     if (!email) {
       return NextResponse.redirect(
-        new URL("/auth/confirm?status=error", process.env.APP_URL)
+        `${baseUrl(req)}/auth/confirm?status=error&reason=bad_payload`
       );
     }
 
-    // Persist: mark the subscriber active (unless they unsubscribed)
-    // and clear any stored confirm token.
-    try {
-      const { error } = await supabaseAdmin
-        .from("subscribers")
-        .update({ status: "active", confirm_token: null })
-        .eq("email", email)
-        .neq("status", "unsubscribed");
+    // 2) Activate subscriber + token hygiene
+    //    - set status=active
+    //    - clear confirm_token
+    //    - clear unsubscribed_at (in case they’re re-subscribing)
+    const { error } = await supabaseAdmin
+      .from("subscribers")
+      .upsert(
+        {
+          email,
+          status: "active",
+          confirm_token: null,
+          unsubscribed_at: null,
+        },
+        { onConflict: "email" }
+      );
 
-      if (error) {
-        // Don’t block the UX; just log for later.
-        console.error("[confirm] DB update error:", error.message);
-      }
-    } catch (dbErr) {
-      console.error("[confirm] DB update exception:", dbErr);
-      // Still continue to success redirect to avoid trapping the user.
+    if (error) {
+      return NextResponse.redirect(
+        `${baseUrl(req)}/auth/confirm?status=error&reason=db`
+      );
     }
 
+    // 3) Done
     return NextResponse.redirect(
-      new URL(
-        `/auth/confirm?status=ok&email=${encodeURIComponent(email)}`,
-        process.env.APP_URL
-      )
+      `${baseUrl(req)}/auth/confirm?status=ok&email=${encodeURIComponent(email)}`
     );
-  } catch (err) {
-    console.error("Confirm route error:", err);
+  } catch {
     return NextResponse.redirect(
-      new URL("/auth/confirm?status=error", process.env.APP_URL)
+      `${baseUrl(req)}/auth/confirm?status=error&reason=invalid_token`
     );
   }
 }
