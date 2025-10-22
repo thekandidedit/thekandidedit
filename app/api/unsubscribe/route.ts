@@ -1,60 +1,96 @@
 // app/api/unsubscribe/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { resend } from "@/lib/resend";
+import { verifyEmailToken } from "@/lib/tokens";
+
+// small helper so we can set the timestamp in one place
+function nowIso() {
+  return new Date().toISOString();
+}
+
+// shared DB operation
+async function markUnsubscribed(email: string) {
+  const { data, error } = await supabaseAdmin
+    .from("subscribers")
+    .update({ status: "unsubscribed", unsubscribed_at: nowIso(), confirm_token: null })
+    .eq("email", email)
+    .neq("status", "unsubscribed")
+    .select("id, email, status, unsubscribed_at")
+    .maybeSingle();
+
+  return { data, error };
+}
+
+/**
+ * GET /api/unsubscribe?token=JWT
+ * - This is what the email "Unsubscribe" link will hit.
+ * - We verify the JWT → extract the email → mark as unsubscribed.
+ * - Returns a tiny HTML page so it looks nice in the browser.
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const url = new URL(req.url);
+    const token = url.searchParams.get("token");
+    if (!token) {
+      return new NextResponse("Missing token", { status: 400 });
+    }
+
+    let email: string;
+    try {
+      const payload = verifyEmailToken(token);
+      email = payload.email.toLowerCase().trim();
+    } catch {
+      return new NextResponse("Invalid or expired token", { status: 400 });
+    }
+
+    const { error } = await markUnsubscribed(email);
+    if (error) {
+      return new NextResponse(`Database error: ${error.message}`, { status: 500 });
+    }
+
+    // simple success page (kept minimal until we style later)
+    const html = `<!doctype html>
+<html lang="en">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Unsubscribed</title>
+<body style="background:#0b0b0b;color:#fff;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;padding:32px">
+  <h1 style="margin:0 0 12px">You’re unsubscribed</h1>
+  <p style="opacity:.8">We’ve stopped emails to <strong>${email}</strong>. You can close this tab.</p>
+</body>
+</html>`;
+    return new NextResponse(html, { status: 200, headers: { "Content-Type": "text/html" } });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
+}
+
+/**
+ * POST /api/unsubscribe
+ * Body: { email: string }
+ * - Used by your /unsubscribe page’s form.
+ */
+const Body = z.object({ email: z.string().email() });
 
 export async function POST(req: NextRequest) {
-  // Expect JSON: { "email": "someone@example.com" }
-  const body = await req.json().catch(() => null);
-  const email = body?.email?.toString().trim();
-
-  if (!email) {
-    return NextResponse.json(
-      { ok: false, where: "validate", error: "Valid email required" },
-      { status: 400 }
-    );
-  }
-
-  // Update status + timestamp
-  const { error } = await supabaseAdmin
-    .from("subscribers")
-    .update({ status: "unsubscribed", unsubscribed_at: new Date().toISOString() })
-    .eq("email", email);
-
-  if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  }
-
-  // Send a courtesy “you’ve been unsubscribed” email (best effort)
-  const from = process.env.EMAIL_FROM || "no-reply@thekandidedit.com";
   try {
-    await resend.emails.send({
-      from,
-      to: email,
-      subject: "You’ve been unsubscribed",
-      text:
-        "You have been unsubscribed from The Kandid Edit.\n" +
-        "We’re sorry to see you go.",
-      html: `
-        <table style="max-width:560px;margin:0 auto;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;">
-          <tr>
-            <td style="padding:32px 24px">
-              <h1 style="margin:0 0 12px;font-size:22px">You’ve been unsubscribed</h1>
-              <p style="margin:0 0 8px;line-height:1.6">
-                We’re sorry to see you go. You won’t receive further emails from
-                <strong>The Kandid Edit</strong>.
-              </p>
-              <p style="margin:16px 0 0;font-size:12px;color:#666">
-                If this was a mistake, you can subscribe again anytime from the site.
-              </p>
-            </td>
-          </tr>
-        </table>
-      `,
-    });
-  } catch {
-    // ignore email errors
-  }
+    const json = await req.json().catch(() => ({}));
+    const parsed = Body.safeParse(json);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: "Valid email required" }, { status: 400 });
+    }
 
-  return NextResponse.json({ ok: true, message: "Unsubscribed successfully." });
+    const email = parsed.data.email.toLowerCase().trim();
+    const { error } = await markUnsubscribed(email);
+    if (error) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
 }
