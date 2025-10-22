@@ -1,3 +1,4 @@
+// app/api/subscribe/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { z } from "zod";
@@ -5,28 +6,29 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { resend } from "@/lib/resend";
 import { signEmailToken } from "@/lib/tokens";
 
-// --- helpers ---------------------------------------------------------------
+// -------- helpers -----------------------------------------------------------
 function cleanBaseUrl(req: NextRequest): string {
-  const fromEnv =
-    (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").trim();
-  const base = fromEnv || new URL(req.url).origin; // fallback to request origin
-  return base.replace(/\/+$/, ""); // remove trailing slash
+  const fromEnv = (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").trim();
+  const base = fromEnv || new URL(req.url).origin;
+  return base.replace(/\/+$/, ""); // strip trailing slash
 }
 
 function fromAddress(): string {
-  return (
-    (process.env.EMAIL_FROM || process.env.RESEND_FROM || "").trim() ||
-    `"The Kandid Edit" <onboarding@resend.dev>`
-  );
+  const configured = (process.env.EMAIL_FROM || process.env.RESEND_FROM || "").trim();
+  return configured || `"The Kandid Edit" <onboarding@resend.dev>`;
 }
 
-// --- schema ----------------------------------------------------------------
+// Tiny types so we never need `any`
+type PgError = { code?: string; message: string };
+type ResendSendResult = { data?: { id?: string | null } | null; error?: { message?: string } | null };
+
+// -------- schema ------------------------------------------------------------
 const Body = z.object({ email: z.string().email() });
 
-// --- route -----------------------------------------------------------------
+// -------- route -------------------------------------------------------------
 export async function POST(req: NextRequest) {
   try {
-    // 1) Validate email
+    // 1) validate payload
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json(
@@ -34,27 +36,30 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    const email = parsed.data.email.trim().toLowerCase();
 
-    const email = parsed.data.email.toLowerCase().trim();
-
-    // 2) Insert or re-arm existing subscriber
+    // 2) insert pending (or re-arm if duplicate & not active)
     const dbToken = crypto.randomBytes(24).toString("hex");
-    const { error: insertError } = await supabaseAdmin
+    const { error: insertErr } = await supabaseAdmin
       .from("subscribers")
       .insert({ email, status: "pending", confirm_token: dbToken })
       .select()
       .single();
 
-    if (insertError) {
-      if ((insertError as any).code === "23505") {
-        const { data: upd, error: updateError } = await supabaseAdmin
+    if (insertErr) {
+      const e = insertErr as unknown as PgError;
+
+      // 23505 = unique_violation
+      if (e.code === "23505") {
+        const { data: upd, error: updErr } = await supabaseAdmin
           .from("subscribers")
           .update({ confirm_token: dbToken, status: "pending" })
           .eq("email", email)
           .neq("status", "active")
           .select();
 
-        if (updateError || !upd?.length) {
+        // If no row was updated, the subscriber is already active -> early OK
+        if (updErr || !upd || upd.length === 0) {
           return NextResponse.json({
             ok: true,
             alreadyActive: true,
@@ -63,36 +68,30 @@ export async function POST(req: NextRequest) {
         }
       } else {
         return NextResponse.json(
-          { ok: false, where: "db", error: insertError.message },
+          { ok: false, where: "db", error: e.message || "Database error" },
           { status: 500 }
         );
       }
     }
 
-    // 3) Build confirmation link
+    // 3) build links
     const jwt = signEmailToken({ email });
-    const confirmUrl = `${cleanBaseUrl(req)}/api/auth/confirm?token=${jwt}`;
-
-    // 4) Build unsubscribe link (for headers + footer)
-    const base = (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").replace(/\/+$/, "");
+    const base = cleanBaseUrl(req);
+    const confirmUrl = `${base}/api/auth/confirm?token=${jwt}`;
     const unsubUrl = `${base}/api/unsubscribe?token=${jwt}`;
 
-    // 5) Send email (non-blocking if it fails)
+    // 4) send message (best-effort)
     try {
       const from = fromAddress();
-      await resend.emails.send({
+      const sendResp = (await resend.emails.send({
         from,
         to: email,
-        reply_to: "no-reply@thekandidedit.com",
         subject: "Please confirm your subscription",
-        headers: {
-          // Lets mail clients show their native "Unsubscribe" button
-          "List-Unsubscribe": `<${unsubUrl}>, <mailto:no-reply@thekandidedit.com>`,
-          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
         text:
-          `Hi,\n\nPlease confirm your subscription to The Kandid Edit by opening this link:\n${confirmUrl}\n\n` +
-          `If you didn’t request this, you can ignore this email.\n\nTo unsubscribe, visit:\n${unsubUrl}`,
+          `Hi,\n\n` +
+          `Please confirm your subscription to The Kandid Edit by opening this link:\n${confirmUrl}\n\n` +
+          `If you didn’t request this, you can ignore this email.\n\n` +
+          `To unsubscribe, visit:\n${unsubUrl}\n`,
         html: `
           <table style="max-width:560px;margin:0 auto;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#111;">
             <tr><td style="padding:24px 0;">
@@ -106,7 +105,7 @@ export async function POST(req: NextRequest) {
                 </a>
               </p>
               <p style="margin:0 0 16px;font-size:12px;color:#666;word-break:break-all;">
-                Or open this link: <br/>
+                Or open this link:<br/>
                 <a href="${confirmUrl}" style="color:#111;">${confirmUrl}</a>
               </p>
               <hr style="margin:24px 0;border:none;border-top:1px solid #eee;" />
@@ -116,12 +115,18 @@ export async function POST(req: NextRequest) {
             </td></tr>
           </table>
         `,
-      });
-    } catch {
-      // Swallow send errors — UI will still show test link
+      })) as ResendSendResult;
+
+      // optional strict check — we don't fail the request, just surface in logs
+      const sentId = sendResp?.data?.id ?? null;
+      if (!sentId) {
+        console.warn("Resend send failed or missing id:", sendResp?.error?.message);
+      }
+    } catch (emailErr) {
+      console.warn("Email send error (non-blocking):", emailErr);
     }
 
-    // 6) Return success with test link
+    // 5) success payload (includes confirmUrl for in-page testing)
     return NextResponse.json({ ok: true, sent: true, confirmUrl }, { status: 200 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
