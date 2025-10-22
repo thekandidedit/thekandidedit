@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     const confirmUrl = `${base}/api/auth/confirm?token=${jwt}`;
     const unsubUrl = `${base}/api/unsubscribe?token=${jwt}`;
 
-    // 4) send message (best-effort)
+    // 4) send message + log
     try {
       const from = fromAddress();
       const sendResp = (await resend.emails.send({
@@ -117,13 +117,27 @@ export async function POST(req: NextRequest) {
         `,
       })) as ResendSendResult;
 
-      // optional strict check — we don't fail the request, just surface in logs
-      const sentId = sendResp?.data?.id ?? null;
-      if (!sentId) {
-        console.warn("Resend send failed or missing id:", sendResp?.error?.message);
-      }
-    } catch (emailErr) {
-      console.warn("Email send error (non-blocking):", emailErr);
+      // Log delivery result
+      const resendId = sendResp?.data?.id ?? null;
+      const status = resendId ? "sent" : "failed";
+      const errorMsg = resendId ? null : sendResp?.error?.message ?? "unknown";
+
+      await supabaseAdmin.from("email_logs").insert({
+        email,
+        template: "confirm_subscription",
+        status,
+        resend_id: resendId,
+        error_message: errorMsg,
+      });
+
+    } catch (err: any) {
+      // Log even if send itself fails
+      await supabaseAdmin.from("email_logs").insert({
+        email,
+        template: "confirm_subscription",
+        status: "failed",
+        error_message: err?.message ?? "send_exception",
+      });
     }
 
     // 5) success payload (includes confirmUrl for in-page testing)
