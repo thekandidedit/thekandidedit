@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// app/api/subscribe/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { z } from "zod";
@@ -75,7 +73,7 @@ export async function POST(req: NextRequest) {
     const jwt = signEmailToken({ email });
     const confirmUrl = `${cleanBaseUrl(req)}/api/auth/confirm?token=${jwt}`;
 
-    // 4) Build unsubscribe link
+    // 4) Build unsubscribe link (for headers + footer)
     const base = (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").replace(/\/+$/, "");
     const unsubUrl = `${base}/api/unsubscribe?token=${jwt}`;
 
@@ -85,7 +83,13 @@ export async function POST(req: NextRequest) {
       await resend.emails.send({
         from,
         to: email,
+        reply_to: "no-reply@thekandidedit.com",
         subject: "Please confirm your subscription",
+        headers: {
+          // Lets mail clients show their native "Unsubscribe" button
+          "List-Unsubscribe": `<${unsubUrl}>, <mailto:no-reply@thekandidedit.com>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
         text:
           `Hi,\n\nPlease confirm your subscription to The Kandid Edit by opening this link:\n${confirmUrl}\n\n` +
           `If you didn’t request this, you can ignore this email.\n\nTo unsubscribe, visit:\n${unsubUrl}`,
