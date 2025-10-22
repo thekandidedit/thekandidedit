@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json(
         { ok: false, where: "validate", error: "Valid email required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
     const email = parsed.data.email.trim().toLowerCase();
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       } else {
         return NextResponse.json(
           { ok: false, where: "db", error: e.message || "Database error" },
-          { status: 500 }
+          { status: 500 },
         );
       }
     }
