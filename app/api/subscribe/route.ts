@@ -18,9 +18,16 @@ function fromAddress(): string {
   return configured || `"The Kandid Edit" <onboarding@resend.dev>`;
 }
 
-// Tiny types so we never need `any`
-type PgError = { code?: string; message: string };
-type ResendSendResult = { data?: { id?: string | null } | null; error?: { message?: string } | null };
+// Strongly typed safe helpers
+interface PgError {
+  code?: string;
+  message: string;
+}
+
+interface ResendSendResponse {
+  data?: { id?: string | null } | null;
+  error?: { message?: string } | null;
+}
 
 // -------- schema ------------------------------------------------------------
 const Body = z.object({ email: z.string().email() });
@@ -47,7 +54,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (insertErr) {
-      const e = insertErr as unknown as PgError;
+      const e = insertErr as PgError;
 
       // 23505 = unique_violation
       if (e.code === "23505") {
@@ -58,7 +65,6 @@ export async function POST(req: NextRequest) {
           .neq("status", "active")
           .select();
 
-        // If no row was updated, the subscriber is already active -> early OK
         if (updErr || !upd || upd.length === 0) {
           return NextResponse.json({
             ok: true,
@@ -83,7 +89,7 @@ export async function POST(req: NextRequest) {
     // 4) send message + log
     try {
       const from = fromAddress();
-      const sendResp = (await resend.emails.send({
+      const sendResp: ResendSendResponse = await resend.emails.send({
         from,
         to: email,
         subject: "Please confirm your subscription",
@@ -115,12 +121,11 @@ export async function POST(req: NextRequest) {
             </td></tr>
           </table>
         `,
-      })) as ResendSendResult;
+      });
 
-      // Log delivery result
-      const resendId = sendResp?.data?.id ?? null;
+      const resendId = sendResp.data?.id ?? null;
       const status = resendId ? "sent" : "failed";
-      const errorMsg = resendId ? null : sendResp?.error?.message ?? "unknown";
+      const errorMsg = resendId ? null : sendResp.error?.message ?? "unknown";
 
       await supabaseAdmin.from("email_logs").insert({
         email,
@@ -129,14 +134,13 @@ export async function POST(req: NextRequest) {
         resend_id: resendId,
         error_message: errorMsg,
       });
-
-    } catch (err: any) {
-      // Log even if send itself fails
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "send_exception";
       await supabaseAdmin.from("email_logs").insert({
         email,
         template: "confirm_subscription",
         status: "failed",
-        error_message: err?.message ?? "send_exception",
+        error_message: message,
       });
     }
 
