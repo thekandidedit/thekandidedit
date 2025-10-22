@@ -86,9 +86,14 @@ export async function POST(req: NextRequest) {
     const confirmUrl = `${base}/api/auth/confirm?token=${jwt}`;
     const unsubUrl = `${base}/api/unsubscribe?token=${jwt}`;
 
-    // 4) send message + log
+    // 4) send message + log (with List-Unsubscribe headers)
     try {
       const from = fromAddress();
+
+      // RFC 2369 + RFC 8058 (One-Click)
+      const oneClickUrl = `${base}/api/unsubscribe/one-click`;
+      const mailto = `mailto:no-reply@thekandidedit.com?subject=unsubscribe`;
+
       const sendResp: ResendSendResponse = await resend.emails.send({
         from,
         to: email,
@@ -121,6 +126,13 @@ export async function POST(req: NextRequest) {
             </td></tr>
           </table>
         `,
+        headers: {
+          // Enables the ‘Unsubscribe’ affordance in Gmail/Yahoo and automated one-click POSTs
+          "List-Unsubscribe": `<${mailto}>, <${oneClickUrl}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          // Optional but good hygiene
+          "Reply-To": "no-reply@thekandidedit.com",
+        },
       });
 
       const resendId = sendResp.data?.id ?? null;
