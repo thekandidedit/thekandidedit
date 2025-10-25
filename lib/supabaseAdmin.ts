@@ -1,8 +1,18 @@
+// lib/supabaseAdmin.ts
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceRole = process.env.SUPABASE_SERVICE_ROLE!; // server only
+// --- env -------------------------------------------------------
+const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const ANON = process.env.SUPABASE_ANON_KEY!;
+const SERVICE = process.env.SUPABASE_SERVICE_ROLE!;
 
-export const supabaseAdmin = createClient(supabaseUrl, serviceRole, {
-  auth: { persistSession: false, autoRefreshToken: false },
+// --- clients ---------------------------------------------------
+// Public client (RLS enforced) — use in server components / edge / browser
+export const supabaseAnon = createClient(URL, ANON, {
+  auth: { persistSession: false },
+});
+
+// Admin client (bypasses RLS) — **server-only** usage like API routes
+export const supabaseAdmin = createClient(URL, SERVICE, {
+  auth: { persistSession: false },
 });
