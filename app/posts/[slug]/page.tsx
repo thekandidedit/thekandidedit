@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getPostBySlug, listPublishedPosts } from "@/lib/posts";
 
-export const revalidate = 60; // ISR
+export const revalidate = 60; // or 180 etc
+export const dynamic = "force-static";
+export const fetchCache = "force-cache";
 
 // 🧩 This makes Vercel prebuild all post pages at build time
 export async function generateStaticParams() {

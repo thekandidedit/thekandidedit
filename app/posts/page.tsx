@@ -2,7 +2,9 @@
 import Link from "next/link";
 import { listPublishedPosts } from "@/lib/posts";
 
-export const revalidate = 60; // ISR
+export const revalidate = 60; // or 180 etc
+export const dynamic = "force-static";
+export const fetchCache = "force-cache";
 
 export default async function PostsPage() {
   const posts = await listPublishedPosts();
