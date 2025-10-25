@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Analytics } from "@vercel/analytics/react"; // ✅ Added this
+import { Analytics } from "@vercel/analytics/react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "The Kandid Edit",
-  description: "Honest takes, creative reviews, and editorial experiments.",
+  description: "Where honest stories meet sharp design.",
 };
 
 export default function RootLayout({
@@ -25,9 +25,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
         {children}
-        <Analytics /> {/* ✅ This enables Vercel Analytics */}
+        <Analytics /> {/* 👈 this sends pageviews to Vercel */}
       </body>
     </html>
   );
