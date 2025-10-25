@@ -1,13 +1,6 @@
 // app/api/email-health/route.ts
 import { NextResponse } from "next/server";
-import { resend } from "@/lib/resend";
-
-function fromAddress(): string {
-  return (
-    (process.env.EMAIL_FROM || process.env.RESEND_FROM || "").trim() ||
-    `"The Kandid Edit" <onboarding@resend.dev>`
-  );
-}
+import { sendMail, fromAddress } from "@/lib/resend";
 
 export async function GET(req: Request) {
   try {
@@ -17,22 +10,25 @@ export async function GET(req: Request) {
     const queryToken = url.searchParams.get("token");
     const token = headerToken ?? queryToken ?? "";
     if (!process.env.HEALTH_TOKEN || token !== process.env.HEALTH_TOKEN) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, error: "Unauthorized" },
+        { status: 401 },
+      );
     }
 
     // 2) Prepare "from" and "to"
-    const from = fromAddress(); // must be 'Name <no-reply@thekandidedit.com>'
+    const from = fromAddress(); // comes from lib/resend.ts
     const to = process.env.TEST_EMAIL ?? "thekandidedit@gmail.com";
 
-    // 3) Send a simple test email
-    const resp = await resend.emails.send({
+    // 3) Send a simple test email via sendMail helper
+    const resp = await sendMail({
       from,
       to,
       subject: "Health: Resend from production",
       text: "If you see this, RESEND_API_KEY + domain are working in production.",
     });
 
-    // 4) Extract id regardless of SDK shape
+    // 4) Extract id safely
     const id =
       (resp as { id?: string })?.id ??
       (resp as { data?: { id?: string } })?.data?.id ??
