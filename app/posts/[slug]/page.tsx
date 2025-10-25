@@ -1,11 +1,16 @@
 // app/posts/[slug]/page.tsx
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getPostBySlug } from "@/lib/posts";
+import { getPostBySlug, listPublishedPosts } from "@/lib/posts";
 
 export const revalidate = 60; // ISR
 
-// In Next 15, the generated PageProps for this route has params as a Promise
+// 🧩 This makes Vercel prebuild all post pages at build time
+export async function generateStaticParams() {
+  const posts = await listPublishedPosts();
+  return posts.map((p) => ({ slug: p.slug }));
+}
+
 type PageProps = {
   params: Promise<{ slug: string }>;
 };
