@@ -8,7 +8,7 @@ export default async function PostsPage() {
   const posts = await listPublishedPosts();
 
   return (
-    <main className="p-8 prose-kandid">
+    <main className="p-8 prose-kandid" style={{ background: "#0b0b0b", minHeight: "100vh", color: "#fff" }}>
       <h1>Articles</h1>
 
       {posts.length === 0 ? (
@@ -21,9 +21,7 @@ export default async function PostsPage() {
                 <Link href={`/posts/${p.slug}`}>{p.title}</Link>
               </h3>
               {p.excerpt && (
-                <p style={{ margin: "0.25rem 0 0.5rem", color: "#aaa" }}>
-                  {p.excerpt}
-                </p>
+                <p style={{ margin: "0.25rem 0 0.5rem", color: "#aaa" }}>{p.excerpt}</p>
               )}
             </li>
           ))}
