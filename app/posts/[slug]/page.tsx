@@ -1,24 +1,67 @@
 // app/posts/[slug]/page.tsx
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { getPostBySlug, listPublishedPosts } from "@/lib/posts";
 
-export const revalidate = 60; // or 180 etc
-export const dynamic = "force-static";
+export const revalidate = 60;           // ISR window
+export const dynamic = "force-static";  // build-time HTML + cache
 export const fetchCache = "force-cache";
 
-// 🧩 This makes Vercel prebuild all post pages at build time
+// Pre-build all posts at deploy time
 export async function generateStaticParams() {
   const posts = await listPublishedPosts();
   return posts.map((p) => ({ slug: p.slug }));
 }
 
+// -- metadata ---------------------------------------------------------------
+// Small helper: base site URL from env or request origin fallback (at runtime
+// this will still produce correct absolute URLs on Vercel).
+function baseUrl() {
+  const fromEnv = (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").trim();
+  return fromEnv || "https://thekandidedit.com";
+}
+
+export async function generateMetadata(
+  { params }: { params: Promise<{ slug: string }> }
+): Promise<Metadata> {
+  const { slug } = await params;
+  const post = await getPostBySlug(slug);
+  if (!post) return { title: "Not found" };
+
+  const url = `${baseUrl()}/posts/${post.slug}`;
+  const title = post.title || "Post";
+  const description =
+    post.excerpt || (post.content ?? "").slice(0, 140) || "The Kandid Edit";
+
+  return {
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      type: "article",
+      url,
+      title,
+      description,
+      images: post.cover_image_url ? [{ url: post.cover_image_url }] : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: post.cover_image_url ? [post.cover_image_url] : undefined,
+    },
+  };
+}
+
+// -- page -------------------------------------------------------------------
 type PageProps = {
   params: Promise<{ slug: string }>;
 };
 
 export default async function PostPage({ params }: PageProps) {
-  const { slug } = await params;               // <-- await the params Promise
+  const { slug } = await params; // params are a Promise in the typed helper we used
   const post = await getPostBySlug(slug);
   if (!post) return notFound();
 
@@ -40,13 +83,19 @@ export default async function PostPage({ params }: PageProps) {
           {new Date(post.created_at).toLocaleDateString()}
         </p>
 
-        {post.cover_image_url && (
-          <img
-            src={post.cover_image_url}
-            alt=""
-            className="rounded-xl border border-white/10 my-6"
-          />
-        )}
+        {post.cover_image_url ? (
+          <div className="my-6">
+            <Image
+              src={post.cover_image_url}
+              alt={post.title || ""}
+              width={1200}
+              height={630}
+              className="rounded-xl border border-white/10 h-auto w-full"
+              sizes="(max-width: 768px) 100vw, 768px"
+              priority
+            />
+          </div>
+        ) : null}
 
         {post.content ? (
           <div className="whitespace-pre-wrap leading-7 opacity-95">
