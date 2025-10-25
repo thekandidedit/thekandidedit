@@ -24,3 +24,22 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* --- Prose defaults we can replace with the real design later --- */
+.prose-kandid {
+  line-height: 1.7;
+}
+.prose-kandid h1,
+.prose-kandid h2,
+.prose-kandid h3 {
+  margin-top: 1.2em;
+  margin-bottom: 0.4em;
+}
+.prose-kandid p {
+  margin: 0.9em 0;
+}
+.prose-kandid a {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
