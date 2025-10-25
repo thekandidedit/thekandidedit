@@ -5,12 +5,14 @@ import { getPostBySlug } from "@/lib/posts";
 
 export const revalidate = 60; // ISR
 
-interface PageProps {
-  params: { slug: string };
-}
+// In Next 15, the generated PageProps for this route has params as a Promise
+type PageProps = {
+  params: Promise<{ slug: string }>;
+};
 
 export default async function PostPage({ params }: PageProps) {
-  const post = await getPostBySlug(params.slug);
+  const { slug } = await params;               // <-- await the params Promise
+  const post = await getPostBySlug(slug);
   if (!post) return notFound();
 
   return (
