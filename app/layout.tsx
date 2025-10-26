@@ -1,17 +1,11 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/react";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 const siteUrl = "https://thekandidedit.com";
 
@@ -25,9 +19,7 @@ export const metadata: Metadata = {
   alternates: {
     canonical: siteUrl,
     types: {
-      "application/rss+xml": [
-        { url: "/rss", title: "The Kandid Edit RSS Feed" },
-      ],
+      "application/rss+xml": [{ url: "/rss", title: "The Kandid Edit RSS Feed" }],
     },
   },
   openGraph: {
@@ -37,12 +29,7 @@ export const metadata: Metadata = {
     siteName: "The Kandid Edit",
     type: "website",
     images: [
-      {
-        url: `${siteUrl}/og-default.jpg`,
-        width: 1200,
-        height: 630,
-        alt: "The Kandid Edit",
-      },
+      { url: `${siteUrl}/og-default.jpg`, width: 1200, height: 630, alt: "The Kandid Edit" },
     ],
   },
   twitter: {
@@ -51,16 +38,12 @@ export const metadata: Metadata = {
     description: "Where honest stories meet sharp design.",
     images: [`${siteUrl}/og-default.jpg`],
   },
-  icons: {
-    icon: "/favicon.ico",
-  },
+  icons: { icon: "/favicon.ico" },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <head>
@@ -73,7 +56,7 @@ export default function RootLayout({
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
-        <Analytics /> {/* sends pageviews to Vercel */}
+        <Analytics />
       </body>
     </html>
   );
