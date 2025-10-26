@@ -4,9 +4,9 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { getPostBySlug, listPublishedPosts } from "@/lib/posts";
-import { renderPostContent } from "@/lib/mdx"; // ✅ using your mdx helper
+import { renderPostContent } from "@/lib/mdx";
 
-export const revalidate = 60;          // keep ISR
+export const revalidate = 60; // ISR
 export const dynamic = "force-static";
 export const fetchCache = "force-cache";
 
@@ -16,9 +16,10 @@ export async function generateStaticParams() {
   return posts.map((p) => ({ slug: p.slug }));
 }
 
+// Always prefer the production host (www) for absolute URLs
 function baseUrl() {
   const fromEnv = (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").trim();
-  return fromEnv || "https://thekandidedit.com";
+  return fromEnv || "https://www.thekandidedit.com";
 }
 
 export async function generateMetadata(
@@ -90,7 +91,6 @@ export default async function PostPage({ params }: PageProps) {
         ) : null}
 
         {renderedHtml ? (
-          // Safe: sanitized in renderPostContent
           <div dangerouslySetInnerHTML={{ __html: renderedHtml }} />
         ) : post.excerpt ? (
           <p className="opacity-80">{post.excerpt}</p>
