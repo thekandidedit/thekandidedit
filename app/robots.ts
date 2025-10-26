@@ -1,11 +1,18 @@
+// app/robots.ts
 import type { MetadataRoute } from "next";
 
+const siteUrl =
+  (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "https://thekandidedit.com")
+    .replace(/\/+$/, "");
+
 export default function robots(): MetadataRoute.Robots {
-  const base = "https://www.thekandidedit.com";
   return {
     rules: [
-      { userAgent: "*", allow: "/" },
+      {
+        userAgent: "*",
+        allow: "/",
+      },
     ],
-    sitemap: `${base}/sitemap.xml`,
+    sitemap: `${siteUrl}/sitemap.xml`,
   };
 }
