@@ -4,12 +4,13 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { getPostBySlug, listPublishedPosts } from "@/lib/posts";
-import { renderPostContent } from "@/lib/mdx";
+import { renderPostContent } from "@/lib/mdx"; // ✅ using your mdx helper
 
-export const revalidate = 60;
+export const revalidate = 60;          // keep ISR
 export const dynamic = "force-static";
 export const fetchCache = "force-cache";
 
+// Build all slugs at deploy time
 export async function generateStaticParams() {
   const posts = await listPublishedPosts();
   return posts.map((p) => ({ slug: p.slug }));
@@ -52,23 +53,19 @@ export async function generateMetadata(
   };
 }
 
-type PageProps = {
-  params: Promise<{ slug: string }>;
-};
+type PageProps = { params: Promise<{ slug: string }> };
 
 export default async function PostPage({ params }: PageProps) {
   const { slug } = await params;
   const post = await getPostBySlug(slug);
   if (!post) return notFound();
 
-  const safeHtml = await renderPostContent(post.content || post.excerpt || "");
+  // Render Markdown/HTML to sanitized HTML
+  const renderedHtml = post.content ? await renderPostContent(post.content) : null;
 
   return (
-    <main
-      className="mx-auto max-w-3xl px-6 py-12 text-white"
-      style={{ background: "#0b0b0b" }}
-    >
-      <article className="prose prose-invert prose-headings:scroll-mt-24 prose-a:underline-offset-4 prose-img:rounded-xl">
+    <main className="mx-auto max-w-3xl px-6 py-12 text-white" style={{ background: "#0b0b0b" }}>
+      <article className="prose-invert prose-kandid">
         <Link href="/posts" className="no-underline text-sm opacity-70 hover:opacity-100">
           ← Back to posts
         </Link>
@@ -92,8 +89,14 @@ export default async function PostPage({ params }: PageProps) {
           </div>
         ) : null}
 
-        {/* Render sanitized HTML */}
-        <div dangerouslySetInnerHTML={{ __html: safeHtml }} />
+        {renderedHtml ? (
+          // Safe: sanitized in renderPostContent
+          <div dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+        ) : post.excerpt ? (
+          <p className="opacity-80">{post.excerpt}</p>
+        ) : (
+          <p className="opacity-80">No content yet.</p>
+        )}
       </article>
     </main>
   );
