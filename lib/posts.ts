@@ -1,4 +1,3 @@
-// lib/posts.ts
 import { supabaseAnon } from "@/lib/supabaseAdmin";
 
 export type Post = {
@@ -13,6 +12,7 @@ export type Post = {
   updated_at: string;
 };
 
+// Fetch all published posts for feeds or lists
 export async function listPublishedPosts(): Promise<Post[]> {
   const { data, error } = await supabaseAnon
     .from("posts")
@@ -24,6 +24,7 @@ export async function listPublishedPosts(): Promise<Post[]> {
   return (data ?? []) as Post[];
 }
 
+// Fetch single post by slug
 export async function getPostBySlug(slug: string): Promise<Post | null> {
   const { data, error } = await supabaseAnon
     .from("posts")
@@ -34,4 +35,17 @@ export async function getPostBySlug(slug: string): Promise<Post | null> {
 
   if (error) return null;
   return (data as Post) ?? null;
+}
+
+// For RSS feed or sitemaps
+export async function getAllPosts() {
+  const posts = await listPublishedPosts();
+
+  // Return in RSS-friendly shape
+  return posts.map((p) => ({
+    slug: p.slug,
+    title: p.title,
+    excerpt: p.excerpt ?? "",
+    date: p.updated_at || p.created_at,
+  }));
 }

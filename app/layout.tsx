@@ -13,9 +13,38 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteUrl = "https://thekandidedit.com";
+
 export const metadata: Metadata = {
-  title: "The Kandid Edit",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "The Kandid Edit",
+    template: "%s | The Kandid Edit",
+  },
   description: "Where honest stories meet sharp design.",
+  alternates: {
+    canonical: siteUrl, // metadataBase + canonical covers absolute URL
+    types: {
+      "application/rss+xml": [
+        { url: "/rss", title: "The Kandid Edit RSS Feed" }, // /rss works; /rss.xml will redirect if you add one later
+      ],
+    },
+  },
+  openGraph: {
+    title: "The Kandid Edit",
+    description: "Where honest stories meet sharp design.",
+    url: siteUrl,
+    siteName: "The Kandid Edit",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "The Kandid Edit",
+    description: "Where honest stories meet sharp design.",
+  },
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({
@@ -25,11 +54,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <head>
+        <link
+          rel="alternate"
+          type="application/rss+xml"
+          href="/rss"
+          title="The Kandid Edit RSS Feed"
+        />
+      </head>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
-        <Analytics /> {/* 👈 this sends pageviews to Vercel */}
+        <Analytics /> {/* sends pageviews to Vercel */}
       </body>
     </html>
   );

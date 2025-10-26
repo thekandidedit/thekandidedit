@@ -48,3 +48,10 @@ body {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+/* globals.css (tail end is fine) */
+.prose-kandid :where(code):not(:where(pre *)) {
+  background: rgba(255,255,255,0.06);
+  padding: .15rem .35rem;
+  border-radius: .35rem;
+  border: 1px solid rgba(255,255,255,0.08);
+}

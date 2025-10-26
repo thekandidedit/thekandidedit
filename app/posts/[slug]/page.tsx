@@ -4,20 +4,17 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { getPostBySlug, listPublishedPosts } from "@/lib/posts";
+import { renderPostContent } from "@/lib/mdx";
 
-export const revalidate = 60;           // ISR window
-export const dynamic = "force-static";  // build-time HTML + cache
+export const revalidate = 60;
+export const dynamic = "force-static";
 export const fetchCache = "force-cache";
 
-// Pre-build all posts at deploy time
 export async function generateStaticParams() {
   const posts = await listPublishedPosts();
   return posts.map((p) => ({ slug: p.slug }));
 }
 
-// -- metadata ---------------------------------------------------------------
-// Small helper: base site URL from env or request origin fallback (at runtime
-// this will still produce correct absolute URLs on Vercel).
 function baseUrl() {
   const fromEnv = (process.env.NEXT_PUBLIC_SITE_URL || process.env.APP_URL || "").trim();
   return fromEnv || "https://thekandidedit.com";
@@ -55,26 +52,24 @@ export async function generateMetadata(
   };
 }
 
-// -- page -------------------------------------------------------------------
 type PageProps = {
   params: Promise<{ slug: string }>;
 };
 
 export default async function PostPage({ params }: PageProps) {
-  const { slug } = await params; // params are a Promise in the typed helper we used
+  const { slug } = await params;
   const post = await getPostBySlug(slug);
   if (!post) return notFound();
+
+  const safeHtml = await renderPostContent(post.content || post.excerpt || "");
 
   return (
     <main
       className="mx-auto max-w-3xl px-6 py-12 text-white"
       style={{ background: "#0b0b0b" }}
     >
-      <article className="prose-invert prose-kandid">
-        <Link
-          href="/posts"
-          className="no-underline text-sm opacity-70 hover:opacity-100"
-        >
+      <article className="prose prose-invert prose-headings:scroll-mt-24 prose-a:underline-offset-4 prose-img:rounded-xl">
+        <Link href="/posts" className="no-underline text-sm opacity-70 hover:opacity-100">
           ← Back to posts
         </Link>
 
@@ -97,15 +92,8 @@ export default async function PostPage({ params }: PageProps) {
           </div>
         ) : null}
 
-        {post.content ? (
-          <div className="whitespace-pre-wrap leading-7 opacity-95">
-            {post.content}
-          </div>
-        ) : post.excerpt ? (
-          <p className="opacity-80">{post.excerpt}</p>
-        ) : (
-          <p className="opacity-80">No content yet.</p>
-        )}
+        {/* Render sanitized HTML */}
+        <div dangerouslySetInnerHTML={{ __html: safeHtml }} />
       </article>
     </main>
   );
