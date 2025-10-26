@@ -1,3 +1,4 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -7,13 +8,13 @@ const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
-
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
 
 const siteUrl = "https://thekandidedit.com";
+const ogImage = `${siteUrl}/og-default.jpg`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -23,11 +24,9 @@ export const metadata: Metadata = {
   },
   description: "Where honest stories meet sharp design.",
   alternates: {
-    canonical: siteUrl, // metadataBase + canonical covers absolute URL
+    canonical: siteUrl,
     types: {
-      "application/rss+xml": [
-        { url: "/rss", title: "The Kandid Edit RSS Feed" }, // /rss works; /rss.xml will redirect if you add one later
-      ],
+      "application/rss+xml": [{ url: "/rss", title: "The Kandid Edit RSS Feed" }],
     },
   },
   openGraph: {
@@ -36,22 +35,31 @@ export const metadata: Metadata = {
     url: siteUrl,
     siteName: "The Kandid Edit",
     type: "website",
+    images: [
+      {
+        url: ogImage,
+        width: 1200,
+        height: 630,
+        alt: "The Kandid Edit",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "The Kandid Edit",
     description: "Where honest stories meet sharp design.",
+    images: [ogImage],
   },
   icons: {
     icon: "/favicon.ico",
   },
 };
 
+export const revalidate = 60; // ensure it re-renders metadata periodically
+
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <head>
@@ -61,10 +69,13 @@ export default function RootLayout({
           href="/rss"
           title="The Kandid Edit RSS Feed"
         />
+        {/* Force OG tags to be inlined in static HTML */}
+        <meta property="og:image" content={ogImage} />
+        <meta name="twitter:image" content={ogImage} />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
-        <Analytics /> {/* sends pageviews to Vercel */}
+        <Analytics />
       </body>
     </html>
   );
