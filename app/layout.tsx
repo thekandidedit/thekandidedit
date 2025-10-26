@@ -4,10 +4,17 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/react";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 
 const siteUrl = "https://thekandidedit.com";
+const ogImage = `${siteUrl}/og-default.jpg`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -29,17 +36,26 @@ export const metadata: Metadata = {
     siteName: "The Kandid Edit",
     type: "website",
     images: [
-      { url: `${siteUrl}/og-default.jpg`, width: 1200, height: 630, alt: "The Kandid Edit" },
+      {
+        url: ogImage,
+        width: 1200,
+        height: 630,
+        alt: "The Kandid Edit",
+      },
     ],
   },
   twitter: {
     card: "summary_large_image",
     title: "The Kandid Edit",
     description: "Where honest stories meet sharp design.",
-    images: [`${siteUrl}/og-default.jpg`],
+    images: [ogImage],
   },
-  icons: { icon: "/favicon.ico" },
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
+
+export const revalidate = 60; // ensure it re-renders metadata periodically
 
 export default function RootLayout({
   children,
@@ -53,6 +69,9 @@ export default function RootLayout({
           href="/rss"
           title="The Kandid Edit RSS Feed"
         />
+        {/* Force OG tags to be inlined in static HTML */}
+        <meta property="og:image" content={ogImage} />
+        <meta name="twitter:image" content={ogImage} />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
